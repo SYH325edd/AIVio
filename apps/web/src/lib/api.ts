@@ -1,14 +1,23 @@
-const DEFAULT_API_BASE_URL = "https://aivio-production.up.railway.app/api";
+const DEFAULT_API_BASE_URL = "/api";
 
 function normalizeApiBaseUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, "");
   if (!trimmed) return DEFAULT_API_BASE_URL;
+  if (trimmed === "/api") return trimmed;
   return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
 }
 
-export const API_BASE_URL = normalizeApiBaseUrl(
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASEURL || DEFAULT_API_BASE_URL
-);
+function shouldUseSameOriginProxy(value: string): boolean {
+  if (!value.includes("railway.app")) return false;
+  if (typeof window === "undefined") return false;
+  return !["localhost", "127.0.0.1"].includes(window.location.hostname);
+}
+
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASEURL || "";
+
+export const API_BASE_URL = shouldUseSameOriginProxy(configuredApiBaseUrl)
+  ? DEFAULT_API_BASE_URL
+  : normalizeApiBaseUrl(configuredApiBaseUrl);
 
 const TOKEN_KEY = "aivio_auth_token";
 
@@ -59,7 +68,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     });
   } catch {
     throw new ApiError(
-      `无法连接后端 API。请检查 Cloudflare 的 VITE_API_BASE_URL 是否配置为 ${API_BASE_URL}，并确认 Railway 的 CORS_ORIGIN 已包含当前前端域名。`,
+      `无法连接后端 API。当前请求地址：${API_BASE_URL}。请确认 Railway 后端已启动，并且 Cloudflare Pages 已部署 API 代理规则。`,
       0,
       "NETWORK_ERROR"
     );

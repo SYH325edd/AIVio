@@ -11,7 +11,7 @@ import { orderRoutes } from "./routes/order.routes.js";
 import { adminRoutes } from "./routes/admin.routes.js";
 import { assetRoutes } from "./routes/asset.routes.js";
 import { promptRoutes } from "./routes/prompt.routes.js";
-import { error, log } from "./utils/logger.js";
+import { error, log, toErrorMeta } from "./utils/logger.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware.js";
 import { applySecurityMiddleware } from "./middleware/security.middleware.js";
 
@@ -20,7 +20,7 @@ const app = express();
 try {
   validateStartupEnv();
 } catch (startupError) {
-  error("Node API startup validation failed", startupError);
+  error("Node API startup validation failed", toErrorMeta(startupError));
   process.exit(1);
 }
 

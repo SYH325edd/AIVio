@@ -73,6 +73,33 @@ Create the first administrator after registering a user:
 npm run dev:make-admin -- --email admin@example.com
 ```
 
+## Railway API Deployment
+
+Create the Railway service from `apps/api` or set the API service root directory to `apps/api`.
+
+Use these commands:
+
+```text
+Build command: npm run build
+Start command: npm run railway:start
+```
+
+Configure these Railway Variables for the API service:
+
+```text
+NODE_ENV=production
+DATABASE_URL=file:./dev.db
+JWT_SECRET=replace_with_a_long_random_secret
+VOLCENGINE_ARK_API_KEY=replace_with_volcengine_key
+CORS_ORIGIN=https://your-frontend-domain.example
+```
+
+Railway provides `PORT` automatically. If you set it manually, keep it as a positive integer. Do not put real `JWT_SECRET`, `VOLCENGINE_ARK_API_KEY`, Bearer tokens, or other provider keys in GitHub, README files, frontend env files, or admin model config JSON.
+
+`npm run railway:start` runs Prisma generation, pushes the SQLite schema, syncs the model config, then starts `node dist/index.js`. If the service crashes during startup, check the deploy log for `Node API startup validation failed`; the log includes the missing variable name without printing secret values.
+
+SQLite on Railway is suitable only for smoke tests and early demos. A redeploy, restart, or filesystem reset can lose local SQLite data unless persistent storage is configured. For formal multi-user production, migrate to PostgreSQL or another managed persistent database.
+
 ## Docker
 
 Build and run:

@@ -61,7 +61,7 @@ function corsMiddleware(): RequestHandler {
   const allowedOrigins = getAllowedOrigins();
   return cors({
     origin(origin, callback) {
-      if (!origin && !isProduction()) {
+      if (!origin) {
         callback(null, true);
         return;
       }

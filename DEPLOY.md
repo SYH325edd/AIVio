@@ -168,10 +168,10 @@ The `frontend` compatibility package installs and builds the real frontend in `a
 Configure this Cloudflare Pages environment variable:
 
 ```text
-VITE_API_BASE_URL=/api
+VITE_API_BASE_URL=https://aivio-production.up.railway.app/api
 ```
 
-The variable name must be `VITE_API_BASE_URL`, with the underscore before `URL`. The frontend includes a Cloudflare Pages `_redirects` rule that proxies `/api/*` to `https://aivio-production.up.railway.app/api/*`, so browsers call the same Cloudflare origin instead of directly calling Railway. Do not put backend secrets, supplier API keys, `JWT_SECRET`, or Bearer tokens in Cloudflare Pages variables.
+The variable name must be `VITE_API_BASE_URL`, with the underscore before `URL`. Include the `/api` suffix. The browser will call the Railway API directly, so configure the Railway `CORS_ORIGIN` variable to include the Cloudflare Pages frontend origin. Do not put backend secrets, supplier API keys, `JWT_SECRET`, or Bearer tokens in Cloudflare Pages variables.
 
 ## Reverse Proxy
 

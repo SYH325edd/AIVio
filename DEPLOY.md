@@ -147,6 +147,15 @@ Build output directory: dist
 
 The root build script installs through the npm workspace, builds `apps/web`, then copies `apps/web/dist` to the repository root `dist` directory for Cloudflare Pages.
 
+If the Cloudflare Pages project is already configured with the build root directory `frontend`, keep that setting and use:
+
+```text
+Build command: npm run build
+Build output directory: dist
+```
+
+The `frontend` compatibility package installs and builds the real frontend in `apps/web`, then copies the output into `frontend/dist`.
+
 Configure this Cloudflare Pages environment variable:
 
 ```text

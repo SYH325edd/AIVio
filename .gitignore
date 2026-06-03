@@ -2,6 +2,7 @@
 node_modules/
 apps/api/node_modules/
 apps/web/node_modules/
+frontend/node_modules/
 
 # env
 .env
@@ -19,6 +20,7 @@ apps/web/.env.*
 dist/
 apps/web/dist/
 apps/api/dist/
+frontend/dist/
 
 # uploads
 uploads/

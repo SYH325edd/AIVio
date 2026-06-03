@@ -48,7 +48,7 @@ export function isProduction(): boolean {
 }
 
 export function validateStartupEnv(): void {
-  const required = ["PORT", "DATABASE_URL", "JWT_SECRET", "VOLCENGINE_ARK_API_KEY"];
+  const required = ["PORT", "DATABASE_URL", "JWT_SECRET"];
   const missing = required.filter((name) => !getEnv(name).trim());
   if (missing.length > 0) {
     throw new Error(`Missing required environment variable(s): ${missing.join(", ")}.`);

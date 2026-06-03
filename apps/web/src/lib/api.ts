@@ -1,11 +1,13 @@
+const DEFAULT_API_BASE_URL = "https://aivio-production.up.railway.app/api";
+
 function normalizeApiBaseUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, "");
-  if (!trimmed) return "http://127.0.0.1:8788/api";
+  if (!trimmed) return DEFAULT_API_BASE_URL;
   return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
 }
 
 export const API_BASE_URL = normalizeApiBaseUrl(
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASEURL || "http://127.0.0.1:8788/api"
+  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASEURL || DEFAULT_API_BASE_URL
 );
 
 const TOKEN_KEY = "aivio_auth_token";

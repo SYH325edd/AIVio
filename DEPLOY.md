@@ -134,6 +134,27 @@ https://your-domain.example/api
 
 Do not configure supplier API keys in the frontend.
 
+## Cloudflare Pages Frontend Deployment
+
+Cloudflare Pages can build the frontend from the repository root.
+
+Use these settings:
+
+```text
+Build command: npm run build
+Build output directory: dist
+```
+
+The root build script installs through the npm workspace, builds `apps/web`, then copies `apps/web/dist` to the repository root `dist` directory for Cloudflare Pages.
+
+Configure this Cloudflare Pages environment variable:
+
+```text
+VITE_API_BASE_URL=https://aivio-production.up.railway.app/api
+```
+
+The variable name must be `VITE_API_BASE_URL`, with the underscore before `URL`. Include the `/api` suffix. Do not put backend secrets, supplier API keys, `JWT_SECRET`, or Bearer tokens in Cloudflare Pages variables.
+
 ## Reverse Proxy
 
 Put a reverse proxy such as Nginx, Caddy, or a cloud load balancer in front of the Node API. A typical layout is:

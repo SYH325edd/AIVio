@@ -18,6 +18,7 @@
     "db:migrate-json": "tsx src/scripts/migrate-json-tasks.ts",
     "dev:grant-credits": "tsx src/scripts/grant-dev-credits.ts",
     "dev:make-admin": "tsx src/scripts/make-admin.ts",
+    "ops:keep-only-user": "tsx src/scripts/keep-only-user.ts",
     "dev:sync-models": "tsx src/scripts/sync-model-config.ts",
     "dev:sync-seedance-fast-model": "tsx src/scripts/sync-seedance-fast-model.ts",
     "dev:sync-seedance-pricing": "tsx src/scripts/sync-seedance-pricing.ts"

@@ -73,6 +73,15 @@ Create the first administrator after registering a user:
 npm run dev:make-admin -- --email admin@example.com
 ```
 
+Keep only one administrator account and remove all other user accounts:
+
+```powershell
+cd apps\api
+npm run ops:keep-only-user -- --email ceshi@qq.com
+```
+
+The script keeps the target user, sets it to `role=admin` and `status=active`, deletes other user accounts, removes their orders and uploaded asset rows, and detaches their generation tasks and credit logs from deleted users. It does not print secrets.
+
 ## Railway API Deployment
 
 Create the Railway service from `apps/api` or set the API service root directory to `apps/api`.

@@ -54,6 +54,7 @@ const counts = [1, 2, 3, 4];
 const MAX_REFERENCE_FRAMES = 6;
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+const CREATE_PROMPT_DRAFT_KEY = "aivio_create_prompt_draft";
 const modeOptions: Array<{ key: GenerationMode; label: string; description: string }> = [
   { key: "text", label: "文生视频", description: "仅通过创意描述生成画面" },
   { key: "image", label: "图生视频", description: "支持首帧或首尾帧参考" },
@@ -168,6 +169,28 @@ function missingResultMessage(task?: GenerationTask | null) {
 }
 
 
+function readPromptDraft() {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.sessionStorage.getItem(CREATE_PROMPT_DRAFT_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function savePromptDraft(value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) {
+      window.sessionStorage.setItem(CREATE_PROMPT_DRAFT_KEY, value);
+    } else {
+      window.sessionStorage.removeItem(CREATE_PROMPT_DRAFT_KEY);
+    }
+  } catch {
+    // Ignore storage errors so prompt editing never blocks generation.
+  }
+}
+
 export default function CreatePage() {
   const navigate = useNavigate();
   const startImageInputRef = useRef<HTMLInputElement | null>(null);
@@ -179,7 +202,7 @@ export default function CreatePage() {
   const { balance, refreshBalance, refreshCreditLogs } = useAuth();
   const [models, setModels] = useState<VideoModel[]>([]);
   const [modelId, setModelId] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(() => readPromptDraft());
   const [ratio, setRatio] = useState("16:9");
   const [generationMode, setGenerationMode] = useState<GenerationMode>("text");
   const [imageInputMode, setImageInputMode] = useState<ImageInputMode>("first");
@@ -231,6 +254,10 @@ export default function CreatePage() {
         ? { kind: "image" as const, url: startImage.previewUrl }
         : null;
   const materialSummary = `首帧 ${startImage?.asset ? 1 : 0} / 尾帧 ${endImage?.asset ? 1 : 0} / 参考帧 ${referenceFrames.filter((frame) => frame.asset).length} / 参考视频 ${referenceVideo?.asset ? 1 : 0}`;
+
+  useEffect(() => {
+    savePromptDraft(prompt);
+  }, [prompt]);
 
   useEffect(() => {
     let alive = true;

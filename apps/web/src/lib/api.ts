@@ -1,4 +1,12 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8788/api";
+function normalizeApiBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "http://127.0.0.1:8788/api";
+  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(
+  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASEURL || "http://127.0.0.1:8788/api"
+);
 
 const TOKEN_KEY = "aivio_auth_token";
 
@@ -41,10 +49,19 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers
+    });
+  } catch {
+    throw new ApiError(
+      `无法连接后端 API。请检查 Cloudflare 的 VITE_API_BASE_URL 是否配置为 ${API_BASE_URL}，并确认 Railway 的 CORS_ORIGIN 已包含当前前端域名。`,
+      0,
+      "NETWORK_ERROR"
+    );
+  }
 
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;

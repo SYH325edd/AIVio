@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 import dotenv from "dotenv";
 
 const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -10,6 +11,15 @@ if (process.env.NODE_ENV === "production") {
 }
 dotenv.config({ path: path.join(apiRoot, ".env"), override: false });
 dotenv.config({ path: path.join(repoRoot, ".env"), override: false });
+
+function resolveConfigFile(fileName: string): string {
+  const candidates = [
+    path.join(repoRoot, "config", fileName),
+    path.join(apiRoot, "config", fileName),
+    path.join(process.cwd(), "config", fileName)
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
+}
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
@@ -25,9 +35,9 @@ export const env = {
   publicAssetBaseUrl: process.env.PUBLIC_ASSET_BASE_URL || "",
   apiRoot,
   repoRoot,
-  modelsPath: path.join(repoRoot, "config", "models.json"),
-  providersPath: path.join(repoRoot, "config", "providers.json"),
-  rechargePackagesPath: path.join(repoRoot, "config", "recharge-packages.json"),
+  modelsPath: resolveConfigFile("models.json"),
+  providersPath: resolveConfigFile("providers.json"),
+  rechargePackagesPath: resolveConfigFile("recharge-packages.json"),
   taskStorePath: path.join(repoRoot, "data", "generation-tasks.json")
 };
 

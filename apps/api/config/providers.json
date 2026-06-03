@@ -1,0 +1,12 @@
+{
+  "providers": [
+    {
+      "key": "volcengine",
+      "displayName": "Volcengine Ark",
+      "adapter": "volcengine",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "apiKeyEnvName": "VOLCENGINE_ARK_API_KEY",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "aivio",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "npm --workspace apps/web run build && node -e \"require('fs').cpSync('apps/web/dist','dist',{recursive:true,force:true})\"",
+    "web:build": "npm --workspace apps/web run build",
+    "web:typecheck": "npm --workspace apps/web run typecheck"
+  }
+}

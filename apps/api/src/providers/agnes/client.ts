@@ -27,18 +27,7 @@ export function extractAgnesErrorMessage(value: unknown): string {
   return "";
 }
 
-export async function requestAgnes(provider: ProviderConfig, apiPath: string, init: RequestInit): Promise<AgnesResponse> {
-  const apiKey = requireEnv(provider.apiKeyEnvName);
-  const response = await fetch(joinApiPath(provider.baseUrl, apiPath), {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      ...(init.headers || {})
-    }
-  });
-
+async function parseAgnesResponse(provider: ProviderConfig, label: string, response: Response): Promise<AgnesResponse> {
   const text = await response.text();
   let body: unknown = text;
   try {
@@ -51,7 +40,7 @@ export async function requestAgnes(provider: ProviderConfig, apiPath: string, in
     const message = extractAgnesErrorMessage(body) || `Agnes request failed with status ${response.status}.`;
     logError("Provider request failed", {
       provider: provider.key,
-      apiPath,
+      apiPath: label,
       status: response.status,
       message
     });
@@ -62,4 +51,30 @@ export async function requestAgnes(provider: ProviderConfig, apiPath: string, in
   }
 
   return { status: response.status, body };
+}
+
+function authHeaders(provider: ProviderConfig, init: RequestInit): HeadersInit {
+  const apiKey = requireEnv(provider.apiKeyEnvName);
+  return {
+    Accept: "application/json",
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    ...(init.headers || {})
+  };
+}
+
+export async function requestAgnes(provider: ProviderConfig, apiPath: string, init: RequestInit): Promise<AgnesResponse> {
+  const response = await fetch(joinApiPath(provider.baseUrl, apiPath), {
+    ...init,
+    headers: authHeaders(provider, init)
+  });
+  return parseAgnesResponse(provider, apiPath, response);
+}
+
+export async function requestAgnesUrl(provider: ProviderConfig, url: string, init: RequestInit): Promise<AgnesResponse> {
+  const response = await fetch(url, {
+    ...init,
+    headers: authHeaders(provider, init)
+  });
+  return parseAgnesResponse(provider, url, response);
 }

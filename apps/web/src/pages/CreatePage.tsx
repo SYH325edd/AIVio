@@ -775,12 +775,16 @@ export default function CreatePage() {
       setError("请选择可用模型。");
       return;
     }
+    const referenceFrameAssetIds = referenceFrames
+      .map((frame) => frame.asset?.id)
+      .filter((id): id is string => Boolean(id))
+      .slice(0, MAX_REFERENCE_FRAMES);
     if (generationMode === "image") {
       if (uploadingAssets) {
         setError("素材上传中，请稍候。");
         return;
       }
-      if (imageInputMode === "first" && !startImage?.asset) {
+      if (imageInputMode === "first" && !startImage?.asset && referenceFrameAssetIds.length === 0) {
         setError("请上传参考图片（首帧）。");
         return;
       }
@@ -817,10 +821,6 @@ export default function CreatePage() {
       setError(estimateError || "请等待积分预估完成。");
       return;
     }
-    const referenceFrameAssetIds = referenceFrames
-      .map((frame) => frame.asset?.id)
-      .filter((id): id is string => Boolean(id))
-      .slice(0, MAX_REFERENCE_FRAMES);
     if (insufficient) {
       setError("当前余额不足，充值后再生成。");
       return;

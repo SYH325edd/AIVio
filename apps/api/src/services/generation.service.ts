@@ -81,10 +81,12 @@ async function resolveAssetInputs(payload: VideoGenerationRequest, userId: strin
   }
 
   if (inputType === "image") {
-    if (!firstFrameAssetId) {
+    if (!firstFrameAssetId && referenceFrameAssetIds.length === 0) {
       throw Object.assign(new Error("请上传参考图片（首帧）。"), { status: 400 });
     }
-    firstFrameAsset = await assetService.requireAsset(firstFrameAssetId, userId, userRole, "image");
+    if (firstFrameAssetId) {
+      firstFrameAsset = await assetService.requireAsset(firstFrameAssetId, userId, userRole, "image");
+    }
     if (imageMode === "first_last_frame") {
       if (!lastFrameAssetId) {
         throw Object.assign(new Error("首尾帧生成需要同时上传首帧图片和尾帧图片。"), { status: 400 });

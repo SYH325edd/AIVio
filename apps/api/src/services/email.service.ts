@@ -15,7 +15,7 @@ type SendVerificationCodeResult = {
 
 const EMAIL_NOT_CONFIGURED_MESSAGE = "SMTP is not configured. Missing SMTP_HOST, SMTP_USER, SMTP_PASS or SMTP_FROM.";
 const EMAIL_DELIVERY_FAILED_MESSAGE = "SMTP email delivery failed. Please try again later.";
-const SMTP_TIMEOUT_MS = 15000;
+const SMTP_TIMEOUT_MS = 9000;
 
 function verificationEmailText(code: string, ttlMinutes: number): string {
   return [
@@ -75,6 +75,12 @@ export class EmailService {
       throw Object.assign(new Error(EMAIL_NOT_CONFIGURED_MESSAGE), { status: 500 });
     }
 
+    const startedAt = Date.now();
+    logError("Starting verification email delivery.", {
+      email: payload.email,
+      ttlMinutes: payload.ttlMinutes
+    });
+
     try {
       await this.transporter.sendMail({
         from: env.smtpFrom,
@@ -82,15 +88,19 @@ export class EmailService {
         subject: "AIVio verification code",
         text: verificationEmailText(payload.code, payload.ttlMinutes)
       });
+      logError("Verification email delivery succeeded.", {
+        email: payload.email,
+        elapsedMs: Date.now() - startedAt
+      });
+      return { delivered: true };
     } catch (sendError) {
       logError("Verification email delivery failed.", {
         email: payload.email,
+        elapsedMs: Date.now() - startedAt,
         error: toErrorMeta(sendError)
       });
       throw Object.assign(new Error(EMAIL_DELIVERY_FAILED_MESSAGE), { status: 502 });
     }
-
-    return { delivered: true };
   }
 }
 

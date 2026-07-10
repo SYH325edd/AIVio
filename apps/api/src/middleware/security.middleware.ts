@@ -50,18 +50,19 @@ async function loadRateLimit(): Promise<RateLimitFactory> {
 }
 
 function corsMiddleware(): RequestHandler {
-  const allowedOrigins = getCorsOrigins();
+  const allowedOrigins = new Set(getCorsOrigins());
   return cors({
+    optionsSuccessStatus: 204,
     origin(origin, callback) {
       if (!origin) {
         callback(null, true);
         return;
       }
-      if (origin && allowedOrigins.includes(origin)) {
+      if (allowedOrigins.has(origin)) {
         callback(null, true);
         return;
       }
-      callback(new Error("CORS origin is not allowed."));
+      callback(null, false);
     }
   });
 }
@@ -95,6 +96,21 @@ export async function applySecurityMiddleware(app: Express): Promise<void> {
   });
 
   app.use(helmetMiddleware);
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (!origin) {
+      next();
+      return;
+    }
+    if (getCorsOrigins().includes(origin)) {
+      next();
+      return;
+    }
+    res.status(403).json({
+      error: `CORS origin is not allowed: ${origin}`,
+      code: "CORS_ORIGIN_NOT_ALLOWED"
+    });
+  });
   app.use(corsMiddleware());
   app.use(generalLimiter);
   app.use("/api/auth/login", authLimiter);

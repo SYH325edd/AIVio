@@ -94,18 +94,21 @@ export function getRuntimeEnvironment(): string {
 }
 
 export function getCorsOrigins(): string[] {
-  if (env.corsOrigin.trim()) {
-    return env.corsOrigin.split(",").map((item) => item.trim()).filter(Boolean);
-  }
-  if (isProduction()) return [];
-  return [
+  const defaultOrigins = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://127.0.0.1:8787",
     "http://localhost:8787",
     "http://127.0.0.1:8788",
-    "http://localhost:8788"
+    "http://localhost:8788",
+    "https://aivio.pages.dev"
   ];
+  const configuredOrigins = env.corsOrigin
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const merged = [...configuredOrigins, ...defaultOrigins];
+  return Array.from(new Set(merged));
 }
 
 export function isSmtpConfigured(): boolean {

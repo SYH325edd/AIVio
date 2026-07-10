@@ -18,6 +18,10 @@ import { applySecurityMiddleware } from "./middleware/security.middleware.js";
 
 const app = express();
 
+if (env.nodeEnv === "production") {
+  app.set("trust proxy", 1);
+}
+
 try {
   validateStartupEnv();
 } catch (startupError) {

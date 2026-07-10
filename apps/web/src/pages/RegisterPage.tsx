@@ -19,6 +19,9 @@ function toChineseMessage(message: string): string {
   if (message === "SMTP email delivery failed. Please try again later.") {
     return "验证码发送失败，请稍后重试。";
   }
+  if (message === "邮件服务未配置" || message === "邮件发件地址未配置" || message === "验证码发送失败，请稍后重试") {
+    return message === "验证码发送失败，请稍后重试" ? message : "验证码发送失败，请稍后重试。";
+  }
   if (message === "Database error. Please try again later.") {
     return "数据库处理失败，请稍后重试。";
   }

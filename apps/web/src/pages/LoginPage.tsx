@@ -10,6 +10,9 @@ function toChineseMessage(message: string): string {
   if (message === "Email is not verified.") {
     return "邮箱尚未验证，请先完成邮箱验证码验证。";
   }
+  if (["邮件服务未配置", "邮件发件地址未配置", "验证码发送失败，请稍后重试"].includes(message)) {
+    return "验证码发送失败，请稍后重试。";
+  }
   return message;
 }
 

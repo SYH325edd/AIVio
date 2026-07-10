@@ -13,9 +13,11 @@ type SendVerificationCodeResult = {
   devVerificationCode?: string;
 };
 
-const EMAIL_NOT_CONFIGURED_MESSAGE = "SMTP is not configured. Missing SMTP_HOST, SMTP_USER, SMTP_PASS or SMTP_FROM.";
-const EMAIL_DELIVERY_FAILED_MESSAGE = "SMTP email delivery failed. Please try again later.";
+const EMAIL_NOT_CONFIGURED_MESSAGE = "邮件服务未配置";
+const EMAIL_SENDER_NOT_CONFIGURED_MESSAGE = "邮件发件地址未配置";
+const EMAIL_DELIVERY_FAILED_MESSAGE = "验证码发送失败，请稍后重试";
 const SMTP_TIMEOUT_MS = 9000;
+const RESEND_API_URL = "https://api.resend.com/emails";
 
 function verificationEmailText(code: string, ttlMinutes: number): string {
   return [
@@ -35,9 +37,28 @@ function getMissingSmtpFields(): string[] {
   return entries.filter(([, value]) => !value.trim()).map(([name]) => name);
 }
 
+function getMissingResendFields(): string[] {
+  const entries: Array<[string, string]> = [
+    ["RESEND_API_KEY", env.resendApiKey],
+    ["RESEND_FROM", env.resendFrom]
+  ];
+  return entries.filter(([, value]) => !value.trim()).map(([name]) => name);
+}
+
+function getErrorCode(errorValue: unknown): string | undefined {
+  if (typeof errorValue !== "object" || errorValue === null || !("code" in errorValue)) return undefined;
+  const code = (errorValue as { code?: unknown }).code;
+  return code === undefined ? undefined : String(code);
+}
+
+function getErrorMessage(errorValue: unknown): string {
+  return errorValue instanceof Error ? errorValue.message : String(errorValue);
+}
+
 export class EmailService {
-  private transporter = isSmtpConfigured()
-    ? nodemailer.createTransport({
+  private transporter = env.emailProvider === "resend" || !isSmtpConfigured()
+    ? null
+    : nodemailer.createTransport({
         host: env.smtpHost,
         port: env.smtpPort,
         secure: env.smtpSecure,
@@ -48,10 +69,20 @@ export class EmailService {
         connectionTimeout: SMTP_TIMEOUT_MS,
         greetingTimeout: SMTP_TIMEOUT_MS,
         socketTimeout: SMTP_TIMEOUT_MS
-      })
-    : null;
+      });
 
   assertVerificationDeliveryAvailable(): void {
+    if (env.emailProvider === "resend") {
+      const missing = getMissingResendFields();
+      if (missing.length > 0) {
+        logError("Resend configuration missing for verification delivery.", { missing });
+        if (!env.resendApiKey.trim()) {
+          throw Object.assign(new Error(EMAIL_NOT_CONFIGURED_MESSAGE), { status: 500 });
+        }
+        throw Object.assign(new Error(EMAIL_SENDER_NOT_CONFIGURED_MESSAGE), { status: 500 });
+      }
+      return;
+    }
     if (!isSmtpConfigured() && env.authRequireEmailVerification) {
       const missing = getMissingSmtpFields();
       logError("SMTP configuration missing for verification delivery.", { missing });
@@ -59,19 +90,71 @@ export class EmailService {
     }
   }
 
+  private async sendViaResend(payload: SendVerificationCodePayload): Promise<void> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SMTP_TIMEOUT_MS);
+    try {
+      const response = await fetch(RESEND_API_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.resendApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: env.resendFrom,
+          to: [payload.email],
+          subject: "AIVio 邮箱验证码",
+          text: verificationEmailText(payload.code, payload.ttlMinutes),
+          html: `<p>AIVio 邮箱验证码：<strong>${payload.code}</strong></p><p>验证码有效期为 ${payload.ttlMinutes} 分钟。</p>`
+        }),
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        const summary = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 300);
+        throw Object.assign(new Error(`Resend API returned HTTP ${response.status}${summary ? `: ${summary}` : ""}`), {
+          code: `HTTP_${response.status}`,
+          statusCode: response.status
+        });
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   async sendVerificationCode(payload: SendVerificationCodePayload): Promise<SendVerificationCodeResult> {
     const startedAt = Date.now();
-    const smtpMeta = {
+    const provider = env.emailProvider === "resend" ? "resend" : "smtp";
+    const deliveryMeta = {
+      provider,
       targetEmail: payload.email,
-      smtpHost: env.smtpHost || "",
-      smtpPort: env.smtpPort,
-      smtpSecure: env.smtpSecure,
+      ...(provider === "resend"
+        ? {}
+        : { smtpHost: env.smtpHost || "", smtpPort: env.smtpPort, smtpSecure: env.smtpSecure }),
       ttlMinutes: payload.ttlMinutes
     };
-    log("Starting verification email delivery.", smtpMeta);
+    log("Starting verification email delivery.", deliveryMeta);
+
+    this.assertVerificationDeliveryAvailable();
+
+    if (provider === "resend") {
+      try {
+        await this.sendViaResend(payload);
+        log("Verification email delivery succeeded.", { ...deliveryMeta, elapsedMs: Date.now() - startedAt });
+        return { delivered: true };
+      } catch (sendError) {
+        const errorName = sendError instanceof Error ? sendError.name : "UnknownError";
+        const errorCode = getErrorCode(sendError);
+        const errorMessage = getErrorMessage(sendError);
+        logError("Verification email delivery failed.", {
+          ...deliveryMeta,
+          elapsedMs: Date.now() - startedAt,
+          error: { name: errorName, code: errorCode, message: errorMessage }
+        });
+        throw Object.assign(new Error(EMAIL_DELIVERY_FAILED_MESSAGE), { status: 502 });
+      }
+    }
 
     if (!this.transporter) {
-      this.assertVerificationDeliveryAvailable();
       if (!isProduction()) {
         warn("SMTP is not configured. Using development verification code fallback.", {
           email: payload.email,
@@ -92,15 +175,16 @@ export class EmailService {
         subject: "AIVio verification code",
         text: verificationEmailText(payload.code, payload.ttlMinutes)
       });
-      log("Verification email delivery succeeded.", { ...smtpMeta, elapsedMs: Date.now() - startedAt });
+      log("Verification email delivery succeeded.", { ...deliveryMeta, elapsedMs: Date.now() - startedAt });
       return { delivered: true };
     } catch (sendError) {
+      const errorName = sendError instanceof Error ? sendError.name : "UnknownError";
+      const errorCode = getErrorCode(sendError);
+      const errorMessage = getErrorMessage(sendError);
       logError("Verification email delivery failed.", {
-        ...smtpMeta,
+        ...deliveryMeta,
         elapsedMs: Date.now() - startedAt,
-        errorName: sendError instanceof Error ? sendError.name : "UnknownError",
-        errorCode: typeof sendError === "object" && sendError !== null && "code" in sendError ? String(sendError.code) : undefined,
-        errorMessage: sendError instanceof Error ? sendError.message : String(sendError)
+        error: { name: errorName, code: errorCode, message: errorMessage }
       });
       throw Object.assign(new Error(EMAIL_DELIVERY_FAILED_MESSAGE), { status: 502 });
     }

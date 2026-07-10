@@ -38,11 +38,15 @@ export function clearStoredToken() {
 
 type ApiRequestOptions = RequestInit & {
   auth?: boolean;
+  timeoutMs?: number;
 };
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const token = getStoredToken();
   const headers = new Headers(options.headers);
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? 15000;
+  const timeoutId = timeoutMs > 0 ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
 
   if (!headers.has("Content-Type") && options.body !== undefined) {
     headers.set("Content-Type", "application/json");
@@ -55,25 +59,40 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
-      headers
+      headers,
+      signal: options.signal ?? controller.signal
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError("Request timed out. Please try again later.", 408, "TIMEOUT_ERROR");
+    }
     throw new ApiError(
-      `无法连接后端 API。当前请求地址：${API_BASE_URL}。请确认 Railway 后端已启动，并且 Railway 的 CORS_ORIGIN 已包含当前前端域名。`,
+      `Unable to reach the backend API at ${API_BASE_URL}. Please verify the Railway backend and CORS configuration.`,
       0,
       "NETWORK_ERROR"
     );
+  } finally {
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+    }
   }
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: any = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new ApiError("The server returned an invalid response.", response.status || 500, "INVALID_JSON");
+    }
+  }
 
   if (!response.ok) {
     if (response.status === 401) {
       clearStoredToken();
     }
     throw new ApiError(
-      data?.error || (response.status === 401 ? "登录状态已失效，请重新登录。" : "请求失败，请稍后重试。"),
+      data?.error || (response.status === 401 ? "Login session expired. Please sign in again." : "Request failed. Please try again later."),
       response.status,
       data?.code
     );

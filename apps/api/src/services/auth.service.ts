@@ -16,8 +16,9 @@ import type {
   VerifyEmailCodeResponse
 } from "../types/auth.js";
 import { createId } from "../utils/id.js";
-import { inviteService } from "./invite.service.js";
 import { billingService } from "./billing.service.js";
+import { inviteService } from "./invite.service.js";
+import { error as logError, toErrorMeta } from "../utils/logger.js";
 
 type DbUser = {
   id: string;
@@ -47,6 +48,7 @@ const VERIFY_SUCCESS_MESSAGE = "Email verification successful. Please log in.";
 const RESEND_GENERIC_MESSAGE = "If the email exists, a verification code has been sent.";
 const EMAIL_NOT_VERIFIED_MESSAGE = "Email is not verified.";
 const VERIFICATION_CODE_EXPIRED_MESSAGE = "Verification code expired or too many attempts. Please request a new code.";
+const DATABASE_ERROR_MESSAGE = "Database error. Please try again later.";
 
 function normalizeEmail(email: string | undefined): string {
   return String(email || "").trim().toLowerCase();
@@ -54,20 +56,20 @@ function normalizeEmail(email: string | undefined): string {
 
 function assertEmail(email: string): void {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw Object.assign(new Error("请输入有效的邮箱地址。"), { status: 400 });
+    throw Object.assign(new Error("Please enter a valid email address."), { status: 400 });
   }
 }
 
 function assertPasswordResetEmail(email: string): void {
   if (!/^[^\s@]+@(qq\.com|gmail\.com)$/.test(email)) {
-    throw Object.assign(new Error("仅支持 QQ邮箱或谷歌邮箱。"), { status: 400 });
+    throw Object.assign(new Error("Only QQ or Gmail addresses are supported."), { status: 400 });
   }
 }
 
 function assertPassword(password: string | undefined): string {
   const value = String(password || "");
   if (value.length < PASSWORD_MIN_LENGTH) {
-    throw Object.assign(new Error(`密码至少需要 ${PASSWORD_MIN_LENGTH} 位。`), { status: 400 });
+    throw Object.assign(new Error(`Password must be at least ${PASSWORD_MIN_LENGTH} characters.`), { status: 400 });
   }
   return value;
 }
@@ -75,7 +77,7 @@ function assertPassword(password: string | undefined): string {
 function assertVerificationCode(code: string | undefined): string {
   const value = String(code || "").trim();
   if (!/^\d{6}$/.test(value)) {
-    throw Object.assign(new Error("请输入 6 位数字验证码。"), { status: 400 });
+    throw Object.assign(new Error("Please enter the 6-digit verification code."), { status: 400 });
   }
   return value;
 }
@@ -156,15 +158,15 @@ function signJwt(payload: JwtPayload, secret: string): string {
 function verifyJwt(token: string, secret: string): JwtPayload {
   const [encodedHeader, encodedBody, encodedSignature] = token.split(".");
   if (!encodedHeader || !encodedBody || !encodedSignature) {
-    throw Object.assign(new Error("登录状态无效。"), { status: 401 });
+    throw Object.assign(new Error("Invalid login session."), { status: 401 });
   }
   const expected = base64UrlEncode(createHmac("sha256", secret).update(`${encodedHeader}.${encodedBody}`).digest());
   if (expected !== encodedSignature) {
-    throw Object.assign(new Error("登录状态无效。"), { status: 401 });
+    throw Object.assign(new Error("Invalid login session."), { status: 401 });
   }
   const decoded = JSON.parse(base64UrlDecode(encodedBody).toString("utf8")) as JwtPayload & { exp?: number };
   if (!decoded.sub || !decoded.email || !decoded.exp || decoded.exp < Math.floor(Date.now() / 1000)) {
-    throw Object.assign(new Error("登录状态已过期，请重新登录。"), { status: 401 });
+    throw Object.assign(new Error("Login session expired. Please sign in again."), { status: 401 });
   }
   return { sub: decoded.sub, email: decoded.email };
 }
@@ -187,6 +189,13 @@ function hasVerificationExpired(user: {
   if (!user.emailVerificationCodeHash || !user.emailVerificationExpiresAt) return true;
   if (user.emailVerificationAttempts >= VERIFICATION_MAX_ATTEMPTS) return true;
   return user.emailVerificationExpiresAt.getTime() < Date.now();
+}
+
+function isPrismaError(error: unknown): error is { code?: string; name?: string } {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; name?: unknown };
+  return (typeof candidate.code === "string" && candidate.code.startsWith("P"))
+    || (typeof candidate.name === "string" && candidate.name.includes("Prisma"));
 }
 
 export function toPublicUser(user: DbUser): PublicUser {
@@ -215,10 +224,12 @@ export class AuthService {
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user || !verifyPassword(currentPassword, user.passwordHash)) throw Object.assign(new Error("原密码错误。"), { status: 400 });
+    if (!user || !verifyPassword(currentPassword, user.passwordHash)) {
+      throw Object.assign(new Error("Current password is incorrect."), { status: 400 });
+    }
     const password = assertPassword(newPassword);
     await prisma.user.update({ where: { id: userId }, data: { passwordHash: hashPassword(password) } });
-    return { message: "密码修改成功。" };
+    return { message: "Password updated successfully." };
   }
 
   async changePasswordByEmail(payload: ChangePasswordRequest) {
@@ -226,7 +237,7 @@ export class AuthService {
     assertPasswordResetEmail(email);
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !verifyPassword(String(payload.currentPassword || ""), user.passwordHash)) {
-      throw Object.assign(new Error("邮箱或原密码错误。"), { status: 400 });
+      throw Object.assign(new Error("Email or current password is incorrect."), { status: 400 });
     }
     const password = assertPassword(payload.newPassword);
     await prisma.user.update({
@@ -238,7 +249,7 @@ export class AuthService {
         passwordResetCodeSentAt: null
       }
     });
-    return { message: "密码修改成功，请重新登录。" };
+    return { message: "Password updated successfully. Please sign in again." };
   }
 
   async sendPasswordResetCode(payload: SendPasswordResetCodeRequest): Promise<RegisterResponse> {
@@ -246,12 +257,12 @@ export class AuthService {
     assertPasswordResetEmail(email);
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw Object.assign(new Error("账号不存在。"), { status: 404 });
+      throw Object.assign(new Error("Account does not exist."), { status: 404 });
     }
 
     const now = Date.now();
     if (user.passwordResetCodeSentAt && now - user.passwordResetCodeSentAt.getTime() < PASSWORD_RESET_COOLDOWN_MS) {
-      throw Object.assign(new Error("验证码发送过于频繁，请 60 秒后重试。"), { status: 429 });
+      throw Object.assign(new Error("Verification code sent too frequently. Please retry after 60 seconds."), { status: 429 });
     }
 
     const code = generateVerificationCode();
@@ -271,7 +282,7 @@ export class AuthService {
         code,
         ttlMinutes: 3
       });
-      return buildVerificationResponse("验证码已发送，请查收邮箱。", delivery) as RegisterResponse;
+      return buildVerificationResponse("Verification code sent. Please check your email.", delivery) as RegisterResponse;
     } catch (error) {
       await prisma.user.update({
         where: { id: user.id },
@@ -292,7 +303,7 @@ export class AuthService {
     const password = assertPassword(payload.newPassword);
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw Object.assign(new Error("账号不存在。"), { status: 404 });
+      throw Object.assign(new Error("Account does not exist."), { status: 404 });
     }
     if (
       !user.passwordResetCodeHash
@@ -300,7 +311,7 @@ export class AuthService {
       || user.passwordResetCodeExpiresAt.getTime() < Date.now()
       || !compareVerificationCode(email, code, user.passwordResetCodeHash)
     ) {
-      throw Object.assign(new Error("验证码错误或已过期，请重新获取。"), { status: 400 });
+      throw Object.assign(new Error("Verification code is invalid or expired. Please request a new code."), { status: 400 });
     }
 
     const updated = await prisma.user.updateMany({
@@ -317,10 +328,11 @@ export class AuthService {
       }
     });
     if (updated.count !== 1) {
-      throw Object.assign(new Error("验证码错误或已过期，请重新获取。"), { status: 400 });
+      throw Object.assign(new Error("Verification code is invalid or expired. Please request a new code."), { status: 400 });
     }
-    return { message: "密码修改成功，请重新登录。" };
+    return { message: "Password updated successfully. Please sign in again." };
   }
+
   async register(payload: RegisterRequest): Promise<RegisterResponse> {
     const email = normalizeEmail(payload.email);
     assertEmail(email);
@@ -366,10 +378,17 @@ export class AuthService {
       return buildVerificationResponse(REGISTER_SUCCESS_MESSAGE, delivery);
     } catch (error) {
       if ((error as { code?: string }).code === "P2002") {
-        throw Object.assign(new Error("该邮箱已注册。"), { status: 409 });
+        throw Object.assign(new Error("This email is already registered."), { status: 409 });
       }
       if (createdUserId) {
         await prisma.user.delete({ where: { id: createdUserId } }).catch(() => undefined);
+      }
+      if (isPrismaError(error)) {
+        logError("Registration database operation failed.", {
+          email,
+          error: toErrorMeta(error)
+        });
+        throw Object.assign(new Error(DATABASE_ERROR_MESSAGE), { status: 500 });
       }
       throw error;
     }
@@ -382,7 +401,7 @@ export class AuthService {
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw Object.assign(new Error("验证码错误。"), { status: 400 });
+      throw Object.assign(new Error("Verification code is incorrect."), { status: 400 });
     }
     if (user.emailVerifiedAt) {
       return { message: VERIFY_SUCCESS_MESSAGE };
@@ -402,7 +421,7 @@ export class AuthService {
       if (attempts >= VERIFICATION_MAX_ATTEMPTS) {
         throw Object.assign(new Error(VERIFICATION_CODE_EXPIRED_MESSAGE), { status: 400 });
       }
-      throw Object.assign(new Error("验证码错误。"), { status: 400 });
+      throw Object.assign(new Error("Verification code is incorrect."), { status: 400 });
     }
 
     await prisma.user.update({
@@ -455,18 +474,18 @@ export class AuthService {
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw Object.assign(new Error("邮箱或密码错误。"), { status: 401 });
+      throw Object.assign(new Error("Email or password is incorrect."), { status: 401 });
     }
     if (user.status === "disabled") {
-      throw Object.assign(new Error("账号已被禁用，请联系管理员。"), { status: 403 });
+      throw Object.assign(new Error("This account has been disabled. Please contact support."), { status: 403 });
     }
     if (user.status !== "active") {
-      throw Object.assign(new Error("账号状态异常，请联系管理员。"), { status: 403 });
+      throw Object.assign(new Error("This account is unavailable. Please contact support."), { status: 403 });
     }
 
     const matched = verifyPassword(password, user.passwordHash);
     if (!matched) {
-      throw Object.assign(new Error("邮箱或密码错误。"), { status: 401 });
+      throw Object.assign(new Error("Email or password is incorrect."), { status: 401 });
     }
     if (env.authRequireEmailVerification && !user.emailVerifiedAt) {
       throw Object.assign(new Error(EMAIL_NOT_VERIFIED_MESSAGE), { status: 403 });

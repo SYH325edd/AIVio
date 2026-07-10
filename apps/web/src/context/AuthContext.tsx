@@ -209,6 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return apiRequest<RegisterResponse>("/auth/register", {
       method: "POST",
       auth: false,
+      timeoutMs: 15000,
       body: JSON.stringify({ email, password, nickname, inviteCode: inviteCode.trim() || undefined })
     });
   }, []);

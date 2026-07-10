@@ -13,14 +13,26 @@ type SendVerificationCodeResult = {
   devVerificationCode?: string;
 };
 
-const EMAIL_NOT_CONFIGURED_MESSAGE = "Email service is not configured.";
+const EMAIL_NOT_CONFIGURED_MESSAGE = "SMTP is not configured. Missing SMTP_HOST, SMTP_USER, SMTP_PASS or SMTP_FROM.";
+const EMAIL_DELIVERY_FAILED_MESSAGE = "SMTP email delivery failed. Please try again later.";
+const SMTP_TIMEOUT_MS = 15000;
 
 function verificationEmailText(code: string, ttlMinutes: number): string {
   return [
-    `你的 AIVio 注册验证码是：${code}`,
-    `验证码 ${ttlMinutes} 分钟内有效。`,
-    "如果不是你本人操作，请忽略这封邮件。"
+    `Your AIVio verification code is: ${code}`,
+    `This code is valid for ${ttlMinutes} minute(s).`,
+    "If you did not request this email, please ignore it."
   ].join("\n");
+}
+
+function getMissingSmtpFields(): string[] {
+  const entries: Array<[string, string]> = [
+    ["SMTP_HOST", env.smtpHost],
+    ["SMTP_USER", env.smtpUser],
+    ["SMTP_PASS", env.smtpPass],
+    ["SMTP_FROM", env.smtpFrom]
+  ];
+  return entries.filter(([, value]) => !value.trim()).map(([name]) => name);
 }
 
 export class EmailService {
@@ -32,12 +44,17 @@ export class EmailService {
         auth: {
           user: env.smtpUser,
           pass: env.smtpPass
-        }
+        },
+        connectionTimeout: SMTP_TIMEOUT_MS,
+        greetingTimeout: SMTP_TIMEOUT_MS,
+        socketTimeout: SMTP_TIMEOUT_MS
       })
     : null;
 
   assertVerificationDeliveryAvailable(): void {
-    if (!isSmtpConfigured() && isProduction() && env.authRequireEmailVerification) {
+    if (!isSmtpConfigured() && env.authRequireEmailVerification) {
+      const missing = getMissingSmtpFields();
+      logError("SMTP configuration missing for verification delivery.", { missing });
       throw Object.assign(new Error(EMAIL_NOT_CONFIGURED_MESSAGE), { status: 500 });
     }
   }
@@ -45,25 +62,24 @@ export class EmailService {
   async sendVerificationCode(payload: SendVerificationCodePayload): Promise<SendVerificationCodeResult> {
     if (!this.transporter) {
       this.assertVerificationDeliveryAvailable();
-      warn("SMTP is not configured. Using development verification code fallback.", {
-        email: payload.email,
-        ttlMinutes: payload.ttlMinutes
-      });
-      warn("Development verification code generated.", {
-        email: payload.email,
-        ttlMinutes: payload.ttlMinutes
-      });
-      return {
-        delivered: false,
-        devVerificationCode: payload.code
-      };
+      if (!isProduction()) {
+        warn("SMTP is not configured. Using development verification code fallback.", {
+          email: payload.email,
+          ttlMinutes: payload.ttlMinutes
+        });
+        return {
+          delivered: false,
+          devVerificationCode: payload.code
+        };
+      }
+      throw Object.assign(new Error(EMAIL_NOT_CONFIGURED_MESSAGE), { status: 500 });
     }
 
     try {
       await this.transporter.sendMail({
         from: env.smtpFrom,
         to: payload.email,
-      subject: "AIVio 注册验证码",
+        subject: "AIVio verification code",
         text: verificationEmailText(payload.code, payload.ttlMinutes)
       });
     } catch (sendError) {
@@ -71,7 +87,7 @@ export class EmailService {
         email: payload.email,
         error: toErrorMeta(sendError)
       });
-      throw sendError;
+      throw Object.assign(new Error(EMAIL_DELIVERY_FAILED_MESSAGE), { status: 502 });
     }
 
     return { delivered: true };

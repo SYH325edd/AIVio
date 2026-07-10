@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import { useAuth } from "../context/AuthContext";
 import qqMailIcon from "../assets/qq-mail-icon.png";
+import { ApiError } from "../lib/api";
 
 function toChineseMessage(message: string): string {
   if (message === "Verification code expired or too many attempts. Please request a new code.") {
@@ -11,6 +12,18 @@ function toChineseMessage(message: string): string {
   }
   if (message === "Email service is not configured.") {
     return "邮箱服务未配置，当前无法发送验证码。";
+  }
+  if (message === "SMTP is not configured. Missing SMTP_HOST, SMTP_USER, SMTP_PASS or SMTP_FROM.") {
+    return "邮箱服务未配置，当前无法发送验证码。";
+  }
+  if (message === "SMTP email delivery failed. Please try again later.") {
+    return "验证码发送失败，请稍后重试。";
+  }
+  if (message === "Database error. Please try again later.") {
+    return "数据库处理失败，请稍后重试。";
+  }
+  if (message === "Request timed out. Please try again later.") {
+    return "注册请求超时，请稍后重试";
   }
   return message;
 }
@@ -97,6 +110,10 @@ export default function RegisterPage() {
       setSuccess("验证码已发送，请查看邮箱。");
       setDevVerificationCode(result.devVerificationCode || "");
     } catch (registerError) {
+      if (registerError instanceof ApiError && registerError.code === "TIMEOUT_ERROR") {
+        setError("注册请求超时，请稍后重试");
+        return;
+      }
       const message = registerError instanceof Error ? registerError.message : "注册失败，请稍后重试。";
       setError(toChineseMessage(message));
     } finally {

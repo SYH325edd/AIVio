@@ -1,5 +1,5 @@
 import express from "express";
-import { env, validateStartupEnv } from "./config/env.js";
+import { env, getCorsOrigins, validateStartupEnv } from "./config/env.js";
 import { uploadRoot } from "./services/asset.service.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import { modelsRoutes } from "./routes/models.routes.js";
@@ -17,10 +17,7 @@ import { errorHandler, notFoundHandler } from "./middleware/error.middleware.js"
 import { applySecurityMiddleware } from "./middleware/security.middleware.js";
 
 const app = express();
-
-if (env.nodeEnv === "production") {
-  app.set("trust proxy", 1);
-}
+app.set("trust proxy", 1);
 
 try {
   validateStartupEnv();
@@ -52,7 +49,12 @@ app.use(errorHandler);
 app.listen(env.port, () => {
   log("Node API started", {
     url: `http://127.0.0.1:${env.port}`,
-    environment: env.nodeEnv,
-    corsOrigin: env.corsOrigin || "development-localhost"
+    NODE_ENV: env.nodeEnv,
+    PORT: env.port,
+    CORS_ORIGIN: env.corsOrigin || "development-localhost",
+    nodeEnv: env.nodeEnv,
+    port: env.port,
+    trustProxy: app.get("trust proxy"),
+    corsOrigins: getCorsOrigins()
   });
 });

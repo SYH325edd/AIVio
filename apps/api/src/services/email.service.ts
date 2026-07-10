@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import { env, isProduction, isSmtpConfigured } from "../config/env.js";
-import { error as logError, toErrorMeta, warn } from "../utils/logger.js";
+import { error as logError, log, warn } from "../utils/logger.js";
 
 type SendVerificationCodePayload = {
   email: string;
@@ -60,6 +60,16 @@ export class EmailService {
   }
 
   async sendVerificationCode(payload: SendVerificationCodePayload): Promise<SendVerificationCodeResult> {
+    const startedAt = Date.now();
+    const smtpMeta = {
+      targetEmail: payload.email,
+      smtpHost: env.smtpHost || "",
+      smtpPort: env.smtpPort,
+      smtpSecure: env.smtpSecure,
+      ttlMinutes: payload.ttlMinutes
+    };
+    log("Starting verification email delivery.", smtpMeta);
+
     if (!this.transporter) {
       this.assertVerificationDeliveryAvailable();
       if (!isProduction()) {
@@ -75,12 +85,6 @@ export class EmailService {
       throw Object.assign(new Error(EMAIL_NOT_CONFIGURED_MESSAGE), { status: 500 });
     }
 
-    const startedAt = Date.now();
-    logError("Starting verification email delivery.", {
-      email: payload.email,
-      ttlMinutes: payload.ttlMinutes
-    });
-
     try {
       await this.transporter.sendMail({
         from: env.smtpFrom,
@@ -88,16 +92,15 @@ export class EmailService {
         subject: "AIVio verification code",
         text: verificationEmailText(payload.code, payload.ttlMinutes)
       });
-      logError("Verification email delivery succeeded.", {
-        email: payload.email,
-        elapsedMs: Date.now() - startedAt
-      });
+      log("Verification email delivery succeeded.", { ...smtpMeta, elapsedMs: Date.now() - startedAt });
       return { delivered: true };
     } catch (sendError) {
       logError("Verification email delivery failed.", {
-        email: payload.email,
+        ...smtpMeta,
         elapsedMs: Date.now() - startedAt,
-        error: toErrorMeta(sendError)
+        errorName: sendError instanceof Error ? sendError.name : "UnknownError",
+        errorCode: typeof sendError === "object" && sendError !== null && "code" in sendError ? String(sendError.code) : undefined,
+        errorMessage: sendError instanceof Error ? sendError.message : String(sendError)
       });
       throw Object.assign(new Error(EMAIL_DELIVERY_FAILED_MESSAGE), { status: 502 });
     }
